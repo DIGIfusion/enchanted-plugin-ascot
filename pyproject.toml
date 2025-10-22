@@ -1,0 +1,23 @@
+[project]
+name = "enchanted_plugin_template"
+version = "0.1.0"
+dependencies = [
+    "enchanted_surrogates",
+    "numpy",]
+requires-python = ">=3.10"
+description = "Template for development of plugins for Enchanted surrogates."
+readme = "README.md"
+authors = [
+    {name = "Name", email = "template@example.com"},
+]
+license = {text = "MIT"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.entry-points."enchanted_surrogates.runners"]
+template_runner = "enchanted_plugin_template.template_runner:TemplateRunner"
+
+[project.entry-points."enchanted_surrogates.parsers"]
+template_parser = "enchanted_plugin_template.template_parser:TemplateParser"
+

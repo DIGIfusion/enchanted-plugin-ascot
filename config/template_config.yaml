@@ -1,0 +1,16 @@
+sampler:
+  type: TemplateSampler
+  bounds: [
+    [1, 10], [0, 1]]
+  num_samples: [5, 5]
+  parameters: ['x', 'y']
+
+runner:
+  type: TemplateRunner
+  executable_path: "path/to/executable"
+  other_params: {}
+
+executor:
+  type: LocalExecutor
+  base_run_dir: /tmp
+  
