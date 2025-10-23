@@ -81,8 +81,10 @@ MC_MARKERS={bbnbi_n_markers}
 
 # End of configuration file
         '''
-        with open(os.path.join(run_dir, 'shine.config'), 'w') as file:
-            file.write(shine_config)
+        if run_dir is not None:
+            with open(os.path.join(run_dir, 'shine.config'), 'w') as file:
+                file.write(shine_config)
+        return shine_config
         
         
     def read_output_file(self, run_dir, timeout=60, check_success=False):
