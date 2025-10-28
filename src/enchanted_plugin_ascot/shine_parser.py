@@ -58,8 +58,8 @@ HFACTOR={params['hfactor']}
 # Setting parameters for codes and output
 # --------------------------------------------------------------------------------------------------
 
-# Run number for IDS imasdb saving
-RUN_OUT=1
+# Run number for IDS saving
+RUN_OUT={params['index']}
 
 # Suffix for output folder
 OUTPUT_SUFFIX={imas_db_suffix}
@@ -73,16 +73,15 @@ RESULTS_PATH={results_path}
 # If run_BBNBI=1 --> METIS+CHEASE+BBNBI+ST_extraction, if run_BBNBI=0 only METIS+CHEASE
 RUN_BBNBI={run_bbnbi}
 
-# Run number for IDS saving
-RUN_OUT={params['index']}
-
 # BBNBI MC markers
 MC_MARKERS={bbnbi_n_markers}
 
 # End of configuration file
         '''
-        with open(os.path.join(run_dir, 'shine.config'), 'w') as file:
-            file.write(shine_config)
+        if run_dir is not None:
+            with open(os.path.join(run_dir, 'shine.config'), 'w') as file:
+                file.write(shine_config)
+        return shine_config
         
         
     def read_output_file(self, run_dir, timeout=60, check_success=False):
