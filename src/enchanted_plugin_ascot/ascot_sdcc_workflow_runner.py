@@ -23,6 +23,7 @@ import logging
 from enchanted_plugin_ascot.shine_parser import ShineParser
 from enchanted_plugin_ascot.shine_runner import ShineRunner
 from enchanted_plugin_ascot.ascot_sdcc_workflow_parser import AscotSdccWorkflowParser
+from datetime import datetime
 
 import time
 
@@ -39,45 +40,47 @@ class AscotSdccWorkflowRunner(Runner):
         self.imas_db_path = kwargs.get('imas_db_path', '/scratch/project_2013233/enchanted_runs/imasdb')
         self.sdcc_ssh_host = kwargs['sdcc_ssh_host']
         self.remote_workflow_folder = kwargs.get('remote_workflow_folder', '/home/ITER/pietrov/shared_work_AIML/version8_DTplasma_H_Dnbi')
-        self.remote_workflow_script = kwargs.get('remote_workflow_script','workflow_AI.sh')
+        self.remote_workflow_script = kwargs.get('remote_workflow_script','/home/ITER/pietrov/shared_work_AIML/v8_workflow_sbatch_passconfig.sh')
         self.remote_config_path = kwargs.get('remote_config_path', '/home/ITER/jordand/ascot_workflow_configs')
         self.remote_user = kwargs.get('remote_user', 'jordand')
         self.idb_version=kwargs.get('idb_version',3)
         self.scenario=kwargs.get('scenario','130120')
-        self.base_ascot_input_file('base_ascot_input_file','/scratch/project_2013233/testdaniel/ascot_input.h5')
+        self.base_ascot_input_file = kwargs.get('base_ascot_input_file','/scratch/project_2013233/testdaniel/ascot_input.h5')
         self.ascot_executable = kwargs.get('ascot_executable', '/scratch/project_2013233/testdaniel/ascot5_main')
-        self.marker_quantity = kwags.get('marker_quantity',10)
-    def single_code_run(self, params: dict, run_dir: str, index:int, *args,**kwargs):
+        self.marker_quantity = kwargs.get('marker_quantity',10)
+        
+    def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
         """
         """
         start = time.time()
-        # make the config file for the precurser code on sdcc, ie pietros workflow
+        print(datetime.now(),'\nmake the config file for the precurser code on sdcc, ie pietros workflow\n', run_dir)
         prerun_config = self.shine_parser.write_input_file(params=params, run_dir=None, imas_db_suffix=self.shine_runner.imas_db_suffix, run_bbnbi=self.shine_runner.run_bbnbi, PL_SPEC=self.shine_runner.pl_spec, NBI_SPEC=self.shine_runner.nbi_spec, output_log_path='DEFAULT', results_path='DEFAULT')
         
-        # send the file to sdcc, to be cleaned later
+        print(datetime.now(),'\nsend the file to sdcc, to be cleaned later\n', run_dir)
         run_id = os.path.basename(run_dir)
         prerun_config_path = os.path.join(self.remote_config_path, run_id+'_shine_config')
         cmd = ["ssh", self.sdcc_ssh_host, f"cat > {prerun_config_path}"]
         subprocess.run(cmd, input=prerun_config.encode(), check=True)
         
-        # run the command on SDCC
+        print(datetime.now(),'\nrun the command on SDCC\n',run_dir)
         jobid = self.submit_remote_sbatch(config_path=prerun_config_path)
         
-        # wait for the job to finish
+        print(datetime.now(),'\nwait for the job to finish.\n',run_dir)
         self.wait_for_job_completion(jobid, timeout_minutes=30)
+        print(datetime.now(),'\nfinished\n',run_dir)
         
-        # copy the needed output of precurser run from sdcc
-        REMOTE_OUTPUT_DIR=f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
-        LOCAL_OUTPUT_DIR=F"{self.imas_db_path}/BBNBI_AI_{self.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
+        print(datetime.now(),'\ncopy the needed output of precurser run from sdcc\n',run_dir)
+        REMOTE_OUTPUT_DIR=f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
+        LOCAL_OUTPUT_DIR=F"{self.imas_db_path}/BBNBI_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
         self.scp_pull_remote_dir_contents(REMOTE_OUTPUT_DIR, LOCAL_OUTPUT_DIR)
         
-        # copy base ascot_input.h5 file to output dir
+        print(datetime.now(),'\ncopy base ascot_input.h5 file to output dir\n',run_dir)
         shutil.copy(base_ascot_input_file, LOCAL_OUTPUT_DIR)
         
-        # alter base file based on equilibrium etc taken from sdcc
+        print(datetime.now(),'\nalter base file based on equilibrium etc taken from sdcc\n',run_dir)
         self.parser.write_input_h5_file(imas_ids_path=LOCAL_OUTPUT_DIR, marker_quantity=self.marker_quantity)
         prelude_interval = time.time()
-        # run ASCOT
+        print(datetime.now(),'\nrun ASCOT\n',run_dir)
         input_output_file = os.path.join(LOCAL_OUTPUT_DIR,'ascot_input.h5')
         self.run_ascot(input_output_file)
         
@@ -96,7 +99,7 @@ class AscotSdccWorkflowRunner(Runner):
         # clean 
         shutil.rmtree(run_dir)
         shutil.rmtree(LOCAL_OUTPUT_DIR)
-        REMOTE_OUTPUT_DIR_FORDEL = f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.imas_db_suffix}/"
+        REMOTE_OUTPUT_DIR_FORDEL = f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.shine_runner.imas_db_suffix}/"
         proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_FORDEL], capture_output=True, text=True)
         print(proc.stdout, end="")
         if proc.stderr:
@@ -108,7 +111,7 @@ class AscotSdccWorkflowRunner(Runner):
 
     
     def run_ssh_command(self, cmd: str, timeout: Optional[float] = None) -> str:
-        ssh_cmd = ["ssh", sdcc_ssh_host, cmd]
+        ssh_cmd = ["ssh", self.sdcc_ssh_host, cmd]
         res = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, check=False)
         if res.returncode != 0:
             raise RuntimeError(f"ssh command failed: {' '.join(ssh_cmd)}\nstdout: {res.stdout.decode()}\nstderr: {res.stderr.decode()}")
@@ -117,10 +120,11 @@ class AscotSdccWorkflowRunner(Runner):
     def submit_remote_sbatch(self, config_path) -> str:
         # Build remote command safely
         remote_dir = shlex.quote(self.remote_workflow_folder)
-        remote_script = shlex.quote(f"{self.remote_workflow_folder.rstrip('/')}/{self.remote_workflow_script}")
+        remote_script = shlex.quote(f"{self.remote_workflow_script}")
         # join and quote script args
-        submit_cmd = f"cd {remote_dir} && sbatch --parsable {remote_script} --input {config_path}"
-        out = run_ssh_command(sdcc_ssh_host, submit_cmd)
+        submit_cmd = f"cd {remote_dir} && sbatch --parsable {remote_script} {config_path}"
+        print(datetime.now(),'\n submit command: ', submit_cmd)
+        out = self.run_ssh_command(submit_cmd)
         if not out:
             raise RuntimeError("sbatch returned empty output while expecting a parsable job id")
         return out.splitlines()[0].strip()
@@ -132,7 +136,7 @@ class AscotSdccWorkflowRunner(Runner):
             # Use squeue -j <jobid> -h to hide headers; exit code 0 and non-empty stdout indicates presence
             check_cmd = f"squeue -j {shlex.quote(jobid)} -h"
             try:
-                out = run_ssh_command(sdcc_ssh_host, check_cmd)
+                out = self.run_ssh_command(check_cmd)
             except RuntimeError as e:
                 # squeue errors may occur if job finished and squeue no longer returns, treat as absent
                 out = ""
