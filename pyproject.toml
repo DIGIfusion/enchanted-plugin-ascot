@@ -22,10 +22,6 @@ imas = [
     "imas-python",
 ]
 
-marker = [
-    "unyt"
-]
-
 [project.entry-points."enchanted_surrogates.runners"]
 shine_runner = "enchanted_plugin_ascot.shine_runner:ShineRunner"
 ascot_sdcc_workflow_runner = "enchanted_plugin_ascot.ascot_sdcc_workflow_runner:AscotSdccWorkflowRunner"
