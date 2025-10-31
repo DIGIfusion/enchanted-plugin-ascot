@@ -182,7 +182,7 @@ class AscotSdccWorkflowParser(Parser):
         # case = sys.argv[2]
         # scenario = sys.argv[1]
         # path = scenario+"/"+case
-        a5 = Ascot(path+"/ascot_input.h5")
+        a5 = Ascot(ascot_path_h5)
         try:
             weight, ekin = a5.data.active.getstate(
                 "weight", "ekin", state="end", endcond=["WALL", "NONE"]

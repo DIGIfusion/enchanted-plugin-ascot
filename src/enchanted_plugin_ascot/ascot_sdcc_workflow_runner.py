@@ -5,8 +5,12 @@
 import os, sys
 import subprocess
 
+import warnings
+
+
 import numpy as np
 import pandas as pd
+import shutil
 
 from dask.distributed import print
 from enchanted_surrogates.runners.base_runner import Runner
@@ -27,6 +31,10 @@ from datetime import datetime
 
 import time
 
+'''
+THIS REQUIRES imas-python from pypy to be installed and imas core, only available to those in iter member states. 
+'''
+
 class AscotSdccWorkflowRunner(Runner):
     """
     """
@@ -40,11 +48,11 @@ class AscotSdccWorkflowRunner(Runner):
         self.imas_db_path = kwargs.get('imas_db_path', '/scratch/project_2013233/enchanted_runs/imasdb')
         self.sdcc_ssh_host = kwargs['sdcc_ssh_host']
         self.remote_workflow_folder = kwargs.get('remote_workflow_folder', '/home/ITER/pietrov/shared_work_AIML/version8_DTplasma_H_Dnbi')
-        self.remote_workflow_script = kwargs.get('remote_workflow_script','/home/ITER/pietrov/shared_work_AIML/v8_workflow_sbatch_passconfig.sh')
+        self.remote_workflow_sbatch = kwargs.get('remote_workflow_sbatch','/home/ITER/pietrov/shared_work_AIML/v8_workflow_sbatch_passconfig.sh')
         self.remote_config_path = kwargs.get('remote_config_path', '/home/ITER/jordand/ascot_workflow_configs')
         self.remote_user = kwargs.get('remote_user', 'jordand')
         self.idb_version=kwargs.get('idb_version',3)
-        self.scenario=kwargs.get('scenario','130120')
+        self.scenario=kwargs.get('scenario','130121')
         self.base_ascot_input_file = kwargs.get('base_ascot_input_file','/scratch/project_2013233/testdaniel/ascot_input.h5')
         self.ascot_executable = kwargs.get('ascot_executable', '/scratch/project_2013233/testdaniel/ascot5_main')
         self.marker_quantity = kwargs.get('marker_quantity',10)
@@ -72,10 +80,13 @@ class AscotSdccWorkflowRunner(Runner):
         print(datetime.now(),'\ncopy the needed output of precurser run from sdcc\n',run_dir)
         REMOTE_OUTPUT_DIR=f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
         LOCAL_OUTPUT_DIR=F"{self.imas_db_path}/BBNBI_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
-        self.scp_pull_remote_dir_contents(REMOTE_OUTPUT_DIR, LOCAL_OUTPUT_DIR)
+        if not os.path.exists(LOCAL_OUTPUT_DIR):
+            os.makedirs(LOCAL_OUTPUT_DIR)
+        
+        self.scp_and_verify(REMOTE_OUTPUT_DIR, LOCAL_OUTPUT_DIR, expected_files=['equilibrium.h5','core_profiles.h5','nbi.h5'])
         
         print(datetime.now(),'\ncopy base ascot_input.h5 file to output dir\n',run_dir)
-        shutil.copy(base_ascot_input_file, LOCAL_OUTPUT_DIR)
+        shutil.copy(self.base_ascot_input_file, LOCAL_OUTPUT_DIR)
         
         print(datetime.now(),'\nalter base file based on equilibrium etc taken from sdcc\n',run_dir)
         self.parser.write_input_h5_file(imas_ids_path=LOCAL_OUTPUT_DIR, marker_quantity=self.marker_quantity)
@@ -88,7 +99,7 @@ class AscotSdccWorkflowRunner(Runner):
         lost_power = self.parser.read_output(input_output_file)
         end = time.time()
         
-        output = {'sdcc_preruntime_min': np.round((prelude_interval-start)/60, 2), 'ascot_runtime_min': end-prelude_interval, 'total_runtime_min':np.round((end-start)/60,2)}
+        output = {'sdcc_preruntime_min': np.round((prelude_interval-start)/60, 2), 'ascot_runtime_min': np.round((end-prelude_interval)/60,2), 'total_runtime_min':np.round((end-start)/60,2)}
         if np.isnan(lost_power):
             output['success'] = False
             output['lost_power_w'] = lost_power
@@ -104,8 +115,6 @@ class AscotSdccWorkflowRunner(Runner):
         print(proc.stdout, end="")
         if proc.stderr:
             print("REMOTE CLEAN ERR:", proc.stderr, file=sys.stderr, end="")
-        sys.exit(proc.returncode)        
-        
         return output
     
 
@@ -120,9 +129,9 @@ class AscotSdccWorkflowRunner(Runner):
     def submit_remote_sbatch(self, config_path) -> str:
         # Build remote command safely
         remote_dir = shlex.quote(self.remote_workflow_folder)
-        remote_script = shlex.quote(f"{self.remote_workflow_script}")
+        remote_sbatch = shlex.quote(f"{self.remote_workflow_sbatch}")
         # join and quote script args
-        submit_cmd = f"cd {remote_dir} && sbatch --parsable {remote_script} {config_path}"
+        submit_cmd = f"cd {remote_dir} && sbatch --parsable {remote_sbatch} {config_path}"
         print(datetime.now(),'\n submit command: ', submit_cmd)
         out = self.run_ssh_command(submit_cmd)
         if not out:
@@ -186,35 +195,29 @@ class AscotSdccWorkflowRunner(Runner):
 
         return proc.returncode
 
+    def scp_and_verify(self, remote_path, local_path, expected_files):
+        # Step 1: Run SCP
+        scp_cmd = [
+            "scp", "-r", "-q",
+            f"{self.sdcc_ssh_host}:{remote_path}/*",
+            local_path
+        ]
+        result = subprocess.run(scp_cmd, capture_output=True, text=True)
 
-    def scp_pull_remote_dir_contents(
-        self,
-        remote_dir: str,
-        local_dir: str,
-        scp_opts: Optional[str] = "-r -q"
-    ) -> None:
-        """
-        Copy remote_dir/* from ssh_host to local_dir using scp.
-        - remote_dir: full remote directory path (no trailing wildcard)
-        - local_dir: local directory path to create/receive files
-        - user: optional username; if provided will be prepended as user@ssh_host
-        - scp_opts: additional scp options string (default: recursive, quiet)
+        if result.returncode != 0:
+            warnings.warn(f"SCP exited with code {result.returncode}. stderr: {result.stderr.strip()}")
 
-        Raises CalledProcessError on failure.
-        """
-        # ensure local directory exists
-        Path(local_dir).mkdir(parents=True, exist_ok=True)
+        # Step 2: Verify local files
+        missing = []
+        for fname in expected_files:
+            full_path = os.path.join(local_path, fname)
+            if not os.path.exists(full_path):
+                missing.append(fname)
 
-        # remote pattern needs to be quoted for remote shell expansion
-        remote_pattern = f"{remote_dir.rstrip('/')}/" + "*"
-
-        # build scp command; quote remote argument so wildcard expands on remote side
-        remote_arg = f"{shlex.quote(self.sdcc_ssh_host)}:{shlex.quote(remote_pattern)}"
-        local_arg = shlex.quote(str(local_dir))
-
-        cmd = ["scp"] + shlex.split(scp_opts) + [remote_arg, local_arg]
-        # run scp
-        subprocess.run(cmd, check=True)
+        if missing:
+            raise FileNotFoundError(f"Missing files after SCP: {missing}")
+        else:
+            print(f"✅ All expected files copied successfully.\n from {remote_path}\n to {local_path}")
 
 # Example usage (adapt variables)
 if __name__ == "__main__":
