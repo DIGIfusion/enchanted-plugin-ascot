@@ -1,3 +1,5 @@
+from enchanted_surrogates.utils.is_package_available import is_package_available
+# check that needed packages are available
 import importlib
 import os
 import sys
@@ -6,9 +8,6 @@ import subprocess
 import unyt
 import numpy as np
 
-from a5py import Ascot
-from a5py.ascot5io.options import Opt
-import a5py.templates.imasinterface as imasinterface
 
 
 from enchanted_surrogates.utils.is_package_available import is_package_available
@@ -69,7 +68,14 @@ from enchanted_surrogates.parsers.base_parser import Parser
 class AscotSdccWorkflowParser(Parser):
     """
     """
+    def __init__(self):
+        #imports are here so it is only imported when the object is made
+        #This helps if the optinal dependancies are not installed. For example imasinterface
+        from a5py import Ascot
+        from a5py.ascot5io.options import Opt
+        import a5py.templates.imasinterface as imasinterface
 
+        
     def write_input_h5_file(self, imas_ids_path, marker_quantity):
         """
         Writes input file.
