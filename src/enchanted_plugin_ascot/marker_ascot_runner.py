@@ -8,9 +8,4 @@ class MarkerAscotRunner(Runner):
     self.options_path = options_path
     
     def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
-        None
-        params['cell_edges'] 
-        params['pitch']
-        params['energy']
-        
-    
+        raise NotImplementedError("This function is not yet implemented.")
