@@ -56,6 +56,7 @@ class AscotSdccWorkflowRunner(Runner):
         self.base_ascot_input_file = kwargs.get('base_ascot_input_file','/scratch/project_2013233/testdaniel/ascot_input.h5')
         self.ascot_executable = kwargs.get('ascot_executable', '/scratch/project_2013233/testdaniel/ascot5_main')
         self.marker_quantity = kwargs.get('marker_quantity',10)
+        self.do_clean = kwargs.get('do_clean', True)
         
     def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
         """
@@ -107,14 +108,23 @@ class AscotSdccWorkflowRunner(Runner):
             output['success'] = True
             output['lost_power_w'] = lost_power
         
-        # clean 
-        shutil.rmtree(run_dir)
-        shutil.rmtree(LOCAL_OUTPUT_DIR)
-        REMOTE_OUTPUT_DIR_FORDEL = f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.shine_runner.imas_db_suffix}/"
-        proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_FORDEL], capture_output=True, text=True)
-        print(proc.stdout, end="")
-        if proc.stderr:
-            print("REMOTE CLEAN ERR:", proc.stderr, file=sys.stderr, end="")
+        # clean
+        if self.do_clean:
+            shutil.rmtree(run_dir)
+            
+            shutil.rmtree(LOCAL_OUTPUT_DIR)
+            
+            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR], capture_output=True, text=True)
+            print(proc.stdout, end="")
+            if proc.stderr:
+                print("REMOTE CLEAN BBNBI ERR:", proc.stderr, file=sys.stderr, end="")
+
+            REMOTE_OUTPUT_DIR_metis=f"/home/ITER/{self.remote_user}/public/imasdb/METIS_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
+            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_metis], capture_output=True, text=True)
+            print(proc.stdout, end="")
+            if proc.stderr:
+                print("REMOTE CLEAN METIS ERR:", proc.stderr, file=sys.stderr, end="")
+
         return output
     
 
@@ -219,6 +229,24 @@ class AscotSdccWorkflowRunner(Runner):
         else:
             print(f"✅ All expected files copied successfully.\n from {remote_path}\n to {local_path}")
 
+    def light_post_processing(self):
+        if self.clean:
+            LOCAL_OUTPUT_DIR_FORDEL=f"{self.imas_db_path}/BBNBI_AI_{self.shine_runner.imas_db_suffix}/"
+            shutil.rmtree(LOCAL_OUTPUT_DIR_FORDEL)
+            
+            REMOTE_OUTPUT_DIR_FORDEL_bbnbi = f"/home/ITER/{self.remote_user}/public/imasdb/BBNBI_AI_{self.shine_runner.imas_db_suffix}/"
+            REMOTE_OUTPUT_DIR_FORDEL_metis = f"/home/ITER/{self.remote_user}/public/imasdb/METIS_AI_{self.shine_runner.imas_db_suffix}/"
+            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_FORDEL_bbnbi], capture_output=True, text=True)
+            print(proc.stdout, end="")
+            if proc.stderr:
+                print("REMOTE CLEAN BBNBI ERR:", proc.stderr, file=sys.stderr, end="")
+
+            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_FORDEL_metis], capture_output=True, text=True)
+            print(proc.stdout, end="")
+            if proc.stderr:
+                print("REMOTE CLEAN METIS ERR:", proc.stderr, file=sys.stderr, end="")
+
+        
 # Example usage (adapt variables)
 if __name__ == "__main__":
     SSH_CONFIG_HOST = "sdcc2"                      # host or ip
