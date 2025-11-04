@@ -15,19 +15,21 @@ class ShineParser():
     def __init__(self):
         None
     
-    def write_input_file(self, params, run_dir, imas_db_suffix, run_bbnbi=1, output_log_path='DEFAULT', results_path='DEFAULT', PL_SPEC="DT", NBI_SPEC="H"):
+    def write_input_file(self, params, run_dir, imas_db_suffix, bbnbi_n_markers=10000, run_bbnbi=1, output_log_path='DEFAULT', results_path='DEFAULT', PL_SPEC="DT", NBI_SPEC="H", constant_params={}):
+        params_to_use = {**params, **constant_params}
+        
         print('debug write input file, params', type(params), params)
         print('debug enbi in params', 'enbi' in params)
         print('debug params items', params.items())
         
         print('debug parser run_bbnbi', run_bbnbi)
         
-        assert 'enbi' in params
-        assert 'nbar' in params
-        assert 'np' in params
-        assert 'hfactor' in params
-        assert 'index' in params
-        bbnbi_n_markers = params.get('bbnbi_n_markers', 10000)
+        assert 'enbi' in params_to_use
+        assert 'nbar' in params_to_use
+        assert 'np' in params_to_use
+        assert 'hfactor' in params_to_use
+        assert 'index' in params_to_use
+        bbnbi_n_markers = params_to_use.get('bbnbi_n_markers', bbnbi_n_markers)
         print('debug out log path', output_log_path)
         shine_config = f'''
 # Configuration file for workflow_AI.sh
@@ -43,23 +45,23 @@ PL_SPEC="{PL_SPEC}"
 NBI_SPEC="{NBI_SPEC}"
 
 # Energy of NBI in keV
-ENBI={params['enbi']}
+ENBI={params_to_use['enbi']}
 
 # Line averaged electron density in 10^19 m^-3
-NBAR={params['nbar']}
+NBAR={params_to_use['nbar']}
 
 # Electron density peaking factor
-NP={params['np']}
+NP={params_to_use['np']}
 
 # H-mode enhancement factor
-HFACTOR={params['hfactor']}
+HFACTOR={params_to_use['hfactor']}
 
 # --------------------------------------------------------------------------------------------------
 # Setting parameters for codes and output
 # --------------------------------------------------------------------------------------------------
 
 # Run number for IDS saving
-RUN_OUT={params['index']}
+RUN_OUT={params_to_use['index']}
 
 # Suffix for output folder
 OUTPUT_SUFFIX={imas_db_suffix}

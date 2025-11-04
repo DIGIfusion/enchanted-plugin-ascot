@@ -24,11 +24,18 @@ class ShineRunner(Runner):
         self.imas_db_suffix = imas_db_suffix # can be anything to identify this run and will be appended to the imas 
         self.return_mode = return_mode
         self.run_bbnbi = kwargs.get('run_bbnbi', 1)
+        self.bbnbi_n_markers = kwargs.get('bbnbi_n_markers',10000)
         self.pl_spec = kwargs.get('pl_spec', "DT")
         self.nbi_spec = kwargs.get('nbi_spec', "D")
         self.metis_output_shot = kwargs.get('metis_output_shot', 130120) # ask pietro / check executable
         self.imasdb_version = kwargs.get('imasdb_version', 3)
         self.do_clean = kwargs.get('do_clean', False)
+        
+        self.constant_params = kwargs.get('constant_params', {})
+        # self.enbi = kwargs.get('enbi', None)
+        # self.nbar = kwargs.get('nbar', None)
+        # self.np = kwargs.get('np', None)
+        # self.hfactor = kwargs.get('hfactor', None)
         
     def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
         """
@@ -38,7 +45,7 @@ class ShineRunner(Runner):
         os.chdir(executable_dir)
         print('SHINErunner: single code run in:', run_dir)
         print('SHINErunner- parameters:', params)
-        self.parser.write_input_file(params=params, run_dir=run_dir, imas_db_suffix=self.imas_db_suffix, run_bbnbi=self.run_bbnbi, PL_SPEC=self.pl_spec, NBI_SPEC=self.nbi_spec, output_log_path=run_dir, results_path=run_dir)
+        self.parser.write_input_file(params=params, run_dir=run_dir, imas_db_suffix=self.imas_db_suffix, bbnbi_n_markers=self.bbnbi_n_markers, run_bbnbi=self.run_bbnbi, PL_SPEC=self.pl_spec, NBI_SPEC=self.nbi_spec, output_log_path=run_dir, results_path=run_dir, constant_params=self.constant_params)
         
         if not os.path.exists(os.path.join(run_dir, 'shine.config')):
             raise FileNotFoundError(f"FOR SOME REASON THE CONFIG FILE WAS NOT CREATED BY THE PARSER: {os.path.join(run_dir, 'shine.config')}")
