@@ -146,7 +146,7 @@ MC_MARKERS={bbnbi_n_markers}
         for file in os.listdir(run_dir):
             for del_file in del_files:
                 if del_file in file:
-                    shutil.rmtree(os.path.join(run_dir), file)
+                    os.remove(os.path.join(run_dir, file))
         
         if imasdb_dir is None:
             imasdb_dir = f"/home/ITER/{getpass.getuser()}/public/imasdb/"
