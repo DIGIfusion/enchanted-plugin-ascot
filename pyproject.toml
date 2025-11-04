@@ -17,10 +17,17 @@ license = {text = "MIT"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[project.optional-dependencies]
+imas = [
+    "imas-python",
+]
+
 [project.entry-points."enchanted_surrogates.runners"]
 shine_runner = "enchanted_plugin_ascot.shine_runner:ShineRunner"
 ascot_sdcc_workflow_runner = "enchanted_plugin_ascot.ascot_sdcc_workflow_runner:AscotSdccWorkflowRunner"
+marker_ascot_runner = "enchanted_plugin_ascot.marker_ascot_runner:MarkerAscotRunner"
 
 [project.entry-points."enchanted_surrogates.parsers"]
 shine_parser = "enchanted_plugin_ascot.shine_parser:ShineParser"
 ascot_sdcc_workflow_parser = "enchanted_plugin_ascot.ascot_sdcc_workflow_parser:AscotSdccWorkflowParser"
+marker_ascot_parser = "enchanted_plugin_ascot.marker_ascot_parser:MarkerAscotParser"
