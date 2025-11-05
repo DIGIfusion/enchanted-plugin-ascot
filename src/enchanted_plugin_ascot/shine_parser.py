@@ -139,7 +139,7 @@ MC_MARKERS={bbnbi_n_markers}
         else:
             return shine_inj1, shine_inj2, te0, teav
     
-    def clean(self, run_dir, imasdb_suffix, imasdb_dir = None):
+    def clean(self, run_dir, params, local_imas_dirs):
         """
         Removes uneeded files
         """
@@ -149,14 +149,9 @@ MC_MARKERS={bbnbi_n_markers}
             for del_file in del_files:
                 if del_file in file:
                     os.remove(os.path.join(run_dir, file))
-        
-        if imasdb_dir is None:
-            imasdb_dir = f"/home/ITER/{getpass.getuser()}/public/imasdb/"
-        
-        for subdir in os.listdir(imasdb_dir):
-            if imasdb_suffix in subdir:
-                shutil.rmtree(os.path.join(imasdb_dir, subdir))
-        
+                
+        for lid in local_imas_dirs:
+            shutil.rmtree(os.path.join(lid, str(params['index'])))
     
     def check_too_much_shine_through(self, run_dir):
         phrase = "Too much shine-through:"

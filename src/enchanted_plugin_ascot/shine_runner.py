@@ -4,7 +4,7 @@ from enchanted_surrogates.runners.base_runner import Runner
 from enchanted_plugin_ascot.shine_parser import ShineParser
 import subprocess
 import shutil
-
+import getpass
 from dask.distributed import print
 
 class ShineRunner(Runner):
@@ -27,9 +27,20 @@ class ShineRunner(Runner):
         self.bbnbi_n_markers = kwargs.get('bbnbi_n_markers',10000)
         self.pl_spec = kwargs.get('pl_spec', "DT")
         self.nbi_spec = kwargs.get('nbi_spec', "D")
-        self.metis_output_shot = kwargs.get('metis_output_shot', 130120) # ask pietro / check executable
+        # self.metis_output_shot = kwargs.get('metis_output_shot', 130121) # ask pietro / check executable
+        if self.pl_spec == 'DT' and self.nbi_spec == 'D':
+            self.metis_output_shot = 130121
+        elif self.pl_spec == 'DT' and self.nbi_spec == 'H':
+            self.metis_output_shot = 130122
+        else:
+            self.metis_output_shot = 0
+
         self.imasdb_version = kwargs.get('imasdb_version', 3)
         self.do_clean = kwargs.get('do_clean', False)
+        
+        self.local_imas_dirs = [
+            f"/home/ITER/{getpass.getuser()}/public/imasdb/METIS_AI_{self.imas_db_suffix}/{self.imasdb_version}/{self.metis_output_shot}/",
+            f"/home/ITER/{getpass.getuser()}/public/imasdb/BBNBI_AI_{self.imas_db_suffix}/{self.imasdb_version}/{self.metis_output_shot}/"]
         
         self.constant_params = kwargs.get('constant_params', {})
         # self.enbi = kwargs.get('enbi', None)
@@ -104,6 +115,6 @@ class ShineRunner(Runner):
             output['output_shine_inj2'] = shine_inj2            
         
         if self.do_clean:
-            self.parser.clean(run_dir, imasdb_suffix=self.imas_db_suffix)
+            self.parser.clean(run_dir, params, self.local_imas_dirs)
         
         return output
