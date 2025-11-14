@@ -157,6 +157,11 @@ MC_MARKERS={bbnbi_n_markers}
             if imasdb_suffix in subdir:
                 shutil.rmtree(os.path.join(imasdb_dir, subdir))
         
+        proc = subprocess.run(["rm", "-r", f'/home/ITER/{self.remote_user}/java.log.*'], capture_output=True, text=True)
+        print(proc.stdout, end="")
+        if proc.stderr:
+            print("REMOVING JAVA LOGS ERR:", proc.stderr, file=sys.stderr, end="")
+        
     
     def check_too_much_shine_through(self, run_dir):
         phrase = "Too much shine-through:"

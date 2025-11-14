@@ -23,7 +23,6 @@ from pathlib import Path
 
 import logging
 
-
 from enchanted_plugin_ascot.shine_parser import ShineParser
 from enchanted_plugin_ascot.shine_runner import ShineRunner
 from enchanted_plugin_ascot.ascot_sdcc_workflow_parser import AscotSdccWorkflowParser
@@ -61,9 +60,14 @@ class AscotSdccWorkflowRunner(Runner):
     def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
         """
         """
+        if 'marker_quantity' in params:
+            marker_quantity = int(params['marker_quantity'])
+        else:
+            marker_quantity = int(self.marker_quantity)
+        
         start = time.time()
-        print(datetime.now(),'\nmake the config file for the precurser code on sdcc, ie pietros workflow\n', run_dir)
-        prerun_config = self.shine_parser.write_input_file(params=params, run_dir=None, imas_db_suffix=self.shine_runner.imas_db_suffix, run_bbnbi=self.shine_runner.run_bbnbi, PL_SPEC=self.shine_runner.pl_spec, NBI_SPEC=self.shine_runner.nbi_spec, output_log_path='DEFAULT', results_path='DEFAULT')
+        print(datetime.now(),'\nmake the config file for the precurser code on sdcc, ie pietros workflow\n', run_dir) # BBNBI will be ran again by ascot, so I put low number of markers here so it is fast.
+        prerun_config = self.shine_parser.write_input_file(params=params, run_dir=None, imas_db_suffix=self.shine_runner.imas_db_suffix, bbnbi_n_markers=marker_quantity, run_bbnbi=self.shine_runner.run_bbnbi, PL_SPEC=self.shine_runner.pl_spec, NBI_SPEC=self.shine_runner.nbi_spec, constant_params=self.shine_runner.constant_params, output_log_path='DEFAULT', results_path='DEFAULT')
         
         print(datetime.now(),'\nsend the file to sdcc, to be cleaned later\n', run_dir)
         run_id = os.path.basename(run_dir)
@@ -90,11 +94,16 @@ class AscotSdccWorkflowRunner(Runner):
         shutil.copy(self.base_ascot_input_file, LOCAL_OUTPUT_DIR)
         
         print(datetime.now(),'\nalter base file based on equilibrium etc taken from sdcc\n',run_dir)
-        self.parser.write_input_h5_file(imas_ids_path=LOCAL_OUTPUT_DIR, marker_quantity=self.marker_quantity)
+        print(datetime.now(),'\nWRITING INPUT H5 FILE\n',run_dir)
+        self.parser.write_input_h5_file(imas_ids_path=LOCAL_OUTPUT_DIR, marker_quantity=marker_quantity)
+        print(datetime.now(),'\nFINISHED WRITING INPUT H5 FILE\n',run_dir)
+
         prelude_interval = time.time()
         print(datetime.now(),'\nrun ASCOT\n',run_dir)
         input_output_file = os.path.join(LOCAL_OUTPUT_DIR,'ascot_input.h5')
+        
         self.run_ascot(input_output_file)
+        print(datetime.now(),'\nrun ASCOT COMPLETE??\n',run_dir)
         
         # Parse the output 
         lost_power = self.parser.read_output(input_output_file)
@@ -110,21 +119,34 @@ class AscotSdccWorkflowRunner(Runner):
         
         # clean
         if self.do_clean:
-            shutil.rmtree(run_dir)
+            # shutil.rmtree(run_dir)
             
             shutil.rmtree(LOCAL_OUTPUT_DIR)
             
-            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR], capture_output=True, text=True)
-            print(proc.stdout, end="")
-            if proc.stderr:
-                print("REMOTE CLEAN BBNBI ERR:", proc.stderr, file=sys.stderr, end="")
-
-            REMOTE_OUTPUT_DIR_metis=f"/home/ITER/{self.remote_user}/public/imasdb/METIS_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
-            proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_metis], capture_output=True, text=True)
-            print(proc.stdout, end="")
-            if proc.stderr:
-                print("REMOTE CLEAN METIS ERR:", proc.stderr, file=sys.stderr, end="")
-
+            try:
+                proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR], capture_output=True, text=True, timeout=60)
+                print(proc.stdout, end="")
+                if proc.stderr:
+                    print("REMOTE CLEAN BBNBI ERR:", proc.stderr, file=sys.stderr, end="")
+            except Exception as e:
+                print(f'ERROR WHEN CLEANING: {REMOTE_OUTPUT_DIR}', e)
+            
+            try:
+                REMOTE_OUTPUT_DIR_metis=f"/home/ITER/{self.remote_user}/public/imasdb/METIS_AI_{self.shine_runner.imas_db_suffix}/{self.idb_version}/{self.scenario}/{params['index']}"
+                proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", REMOTE_OUTPUT_DIR_metis], capture_output=True, text=True, timeout=60)
+                print(proc.stdout, end="")
+                if proc.stderr:
+                    print("REMOTE CLEAN METIS ERR:", proc.stderr, file=sys.stderr, end="")
+            except Exception as e:
+                print(f'ERROR WHEN CLEANING: {REMOTE_OUTPUT_DIR_metis}', e)
+            
+            try:
+                proc = subprocess.run(["ssh", self.sdcc_ssh_host, "rm", "-r", f'/home/ITER/{self.remote_user}/java.log.*'], capture_output=True, text=True, timeout=60)
+                print(proc.stdout, end="")
+                if proc.stderr:
+                    print("REMOTE CLEAN METIS ERR:", proc.stderr, file=sys.stderr, end="")
+            except Exception as e:
+                print(f'ERROR WHEN CLEANING JAVA LOGS IN SDCC USER HOME DIR', e)
         return output
     
 
@@ -188,6 +210,9 @@ class AscotSdccWorkflowRunner(Runner):
         # Run and capture output
         proc = subprocess.run(cmd, capture_output=True, text=True)
 
+        logging.info("RUN ASCOT COMMAND %s", ' '.join(cmd))
+        print(f"RUN ASCOT COMMAND {' '.join(cmd)}")
+
         # Print stdout if any
         if proc.stdout:
             logging.info("ASCOT STDOUT:\n%s", proc.stdout.rstrip())
@@ -205,32 +230,38 @@ class AscotSdccWorkflowRunner(Runner):
 
         return proc.returncode
 
-    def scp_and_verify(self, remote_path, local_path, expected_files):
-        # Step 1: Run SCP
-        scp_cmd = [
-            "scp", "-r", "-q",
-            f"{self.sdcc_ssh_host}:{remote_path}/*",
-            local_path
-        ]
-        result = subprocess.run(scp_cmd, capture_output=True, text=True)
+    def scp_and_verify(self, remote_path, local_path, expected_files, timeout_sec=60*10):
+        missing = expected_files
+        start = time.time()
+        while missing and time.time()-start < timeout_sec:
+            # Step 1: Run SCP
+            scp_cmd = [
+                "scp", "-r", "-q",
+                f"{self.sdcc_ssh_host}:{remote_path}/*",
+                local_path
+            ]
+            result = subprocess.run(scp_cmd, capture_output=True, text=True)
 
-        if result.returncode != 0:
-            warnings.warn(f"SCP exited with code {result.returncode}. stderr: {result.stderr.strip()}")
+            if result.returncode != 0:
+                warnings.warn(f"SCP exited with code {result.returncode}. stderr: {result.stderr.strip()}")
 
-        # Step 2: Verify local files
-        missing = []
-        for fname in expected_files:
-            full_path = os.path.join(local_path, fname)
-            if not os.path.exists(full_path):
-                missing.append(fname)
-
+            # Step 2: Verify local files
+            missing = []
+            for fname in expected_files:
+                full_path = os.path.join(local_path, fname)
+                if not os.path.exists(full_path):
+                    missing.append(fname)
+            print(f"IN SCP AND VERIFY, STILL MISSING: {missing}, TIME PASSED {time.time()-start} sec\n scp command: {' '.join(scp_cmd)}")
+            time.sleep(2)
+        
         if missing:
-            raise FileNotFoundError(f"Missing files after SCP: {missing}")
+            raise FileNotFoundError(f"Missing files after SCP: {missing}\n transfer from: {self.sdcc_ssh_host}:{remote_path} \n to: {local_path}")
         else:
-            print(f"✅ All expected files copied successfully.\n from {remote_path}\n to {local_path}")
+            print(f"✅ All expected files copied successfully.\n from: {self.sdcc_ssh_host}:{remote_path}\n to: {local_path}")
 
-    def light_post_processing(self):
-        if self.clean:
+
+    def light_post_processing(self, *args, **kwargs):
+        if self.do_clean:
             LOCAL_OUTPUT_DIR_FORDEL=f"{self.imas_db_path}/BBNBI_AI_{self.shine_runner.imas_db_suffix}/"
             shutil.rmtree(LOCAL_OUTPUT_DIR_FORDEL)
             

@@ -1,3 +1,4 @@
+import traceback
 from enchanted_surrogates.utils.is_package_available import is_package_available
 # check that needed packages are available
 import importlib
@@ -9,12 +10,9 @@ import unyt
 import numpy as np
 
 
-
 from enchanted_surrogates.utils.is_package_available import is_package_available
 if is_package_available("dask.distributed"):
     from dask.distributed import print
-
-_LIBS_LOADED = False
 
 def _ensure_runtime_is_clean():
     # small sanity checks you can expand: ensure LD_LIBRARY_PATH doesn't contain pmix/openmpi
@@ -23,23 +21,29 @@ def _ensure_runtime_is_clean():
         print("Warning: LD_LIBRARY_PATH contains pmix/openmpi; this may break MPICH-linked libraries")
     # don't attempt to change env here
 
+# The lazy import is needed so that users that do not have IMAS installed are not required to have it when the plugin is loaded by enchanted surrogates.
+# Users may be using another runner and parser from the plugin
+# At module level
+Ascot = None
+Opt = None
+imasinterface = None
+
 def _lazy_import_libs():
-    global _LIBS_LOADED, _libascot, _Ascot
-    if _LIBS_LOADED:
-        return
+    global Ascot, Opt, imasinterface
     _ensure_runtime_is_clean()
     try:
-        # now import ascot package (which loads libascot)
-        from a5py import Ascot
-        from a5py.ascot5io.options import Opt
-        import a5py.templates.imasinterface as imasinterface
+        from a5py import Ascot as Ascot_
+        from a5py.ascot5io.options import Opt as Opt_
+        import a5py.templates.imasinterface as imasinterface_
+
+        Ascot = Ascot_
+        Opt = Opt_
+        imasinterface = imasinterface_
 
     except Exception as e:
-        # surface diagnostic; do NOT let importlib swallow this silently
         print("Failed to import MPI-linked libraries at plugin load:", e)
         raise
-    _LIBS_LOADED = True
-
+    
 # print("=== Dask Worker Environment ===")
 # print("LD_LIBRARY_PATH:", os.environ.get("LD_LIBRARY_PATH"))
 # print("PYTHONPATH:", os.environ.get("PYTHONPATH"))
@@ -71,10 +75,7 @@ class AscotSdccWorkflowParser(Parser):
     def __init__(self):
         #imports are here so it is only imported when the object is made
         #This helps if the optinal dependancies are not installed. For example imasinterface
-        from a5py import Ascot
-        from a5py.ascot5io.options import Opt
-        import a5py.templates.imasinterface as imasinterface
-
+        pass
         
     def write_input_h5_file(self, imas_ids_path, marker_quantity):
         """
@@ -88,6 +89,7 @@ class AscotSdccWorkflowParser(Parser):
             Path to the run directory.
 
         """
+        _lazy_import_libs()
         nmrk = marker_quantity #100
         time = 324.0
         # case = sys.argv[2]
@@ -184,17 +186,24 @@ class AscotSdccWorkflowParser(Parser):
         return write_input_h5_file(*args, **kwargs)
 
     def read_output(self, ascot_path_h5):
+        _lazy_import_libs()
+
         lost_power = np.nan
         # case = sys.argv[2]
         # scenario = sys.argv[1]
         # path = scenario+"/"+case
         a5 = Ascot(ascot_path_h5)
         try:
+            print('debug a5:', type(a5), a5)
+            print('debug a5.data:', type(a5.data), a5.data)            
             weight, ekin = a5.data.active.getstate(
                 "weight", "ekin", state="end", endcond=["WALL", "NONE"]
             )
+            print('debug weight', weight)
+            print('debug ekin', ekin)
             lost_power = float(np.sum(weight * ekin).to("W").v if len(weight) else 0.0)
-        except:
+        except Exception as e:
+            print(f"LOST POWER NOT RETRIVABLE, ERROR:\n{e} \n TRACEBACK:\n{traceback.format_exc()}")
             lost_power = np.nan
         # print(f"Lost power is {lost_power} W.")
         # headers = ["Lost power [W]",]
@@ -217,3 +226,13 @@ class AscotSdccWorkflowParser(Parser):
             Path to the run directory.
         """
         return
+
+if __name__ == '__main__':
+    import sys
+    # _, command = sys.argv
+    parser = AscotSdccWorkflowParser()
+    
+    ah5 = "/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_64sobol/3/130121/0/ascot_input.h5"
+    print('OUTPUT:',parser.read_output(ah5))
+    # if command == 'clean':
+    #     parser.clean()
