@@ -7,6 +7,8 @@ import shutil
 import getpass
 from dask.distributed import print
 
+import time
+
 class ShineRunner(Runner):
     """
     Runner for executing the bbnbi --> chease workflow on sdcc; workflow put together by Pietro Vincenzi from Consorzio RFX, Italy.
@@ -50,7 +52,8 @@ class ShineRunner(Runner):
         
     def single_code_run(self, params: dict, run_dir: str, *args,**kwargs):
         """
-        """        
+        """
+        start = time.time()        
         # Define the command and arguments
         executable_dir = os.path.dirname(self.executable_path)
         os.chdir(executable_dir)
@@ -115,6 +118,13 @@ class ShineRunner(Runner):
             output['output_shine_inj2'] = shine_inj2            
         
         if self.do_clean:
+            start_clean = time.time()
             self.parser.clean(run_dir, params, self.local_imas_dirs)
-        
+            end_clean = time.time()
+            output['clean_time_min'] = (end_clean - start_clean) / 60
+        end = time.time()
+        output['run_time_min'] = (end - start) / 60
         return output
+    
+    def light_post_processing(self):
+        self.parser.remove_java_logs()

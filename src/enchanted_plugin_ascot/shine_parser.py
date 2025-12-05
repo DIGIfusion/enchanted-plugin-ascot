@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from dask.distributed import print
 import shutil
+import sys
 
 class ShineParser():
     def __init__(self):
@@ -143,26 +144,20 @@ MC_MARKERS={bbnbi_n_markers}
         """
         Removes uneeded files
         """
-        del_files = ['gen.out','metis.out', 'model.out', 'results.txt', 'shine.out', 'shine_workflow.err', 'shine_workflow.out', 'shine.config',]
+        # del_files = ['gen.out','metis.out', 'model.out', 'results.txt', 'shine.out', 'shine_workflow.err', 'shine_workflow.out', 'shine.config',]
         
-        for file in os.listdir(run_dir):
-            for del_file in del_files:
-                if del_file in file:
-                    os.remove(os.path.join(run_dir, file))
+        # for file in os.listdir(run_dir):
+        #     for del_file in del_files:
+        #         if del_file in file:
+        #             os.remove(os.path.join(run_dir, file))
         
-        if imasdb_dir is None:
-            imasdb_dir = f"/home/ITER/{getpass.getuser()}/public/imasdb/"
+        # if imasdb_dir is None:
+        #     imasdb_dir = f"/home/ITER/{getpass.getuser()}/public/imasdb/"
         
-        for subdir in os.listdir(imasdb_dir):
-            if imasdb_suffix in subdir:
-                shutil.rmtree(os.path.join(imasdb_dir, subdir))
-        
-        proc = subprocess.run(["rm", "-r", f'/home/ITER/{self.remote_user}/java.log.*'], capture_output=True, text=True)
-        print(proc.stdout, end="")
-        if proc.stderr:
-            print("REMOVING JAVA LOGS ERR:", proc.stderr, file=sys.stderr, end="")
-        
-                
+        # for subdir in os.listdir(imasdb_dir):
+        #     if imasdb_suffix in subdir:
+        #         shutil.rmtree(os.path.join(imasdb_dir, subdir))
+                        
         for lid in local_imas_dirs:
             shutil.rmtree(os.path.join(lid, str(params['index'])))
     
@@ -180,6 +175,22 @@ MC_MARKERS={bbnbi_n_markers}
         except Exception as e:
             print(f"An error occurred: {e}")
         return too_much
+
+    def remove_java_logs(self):
+        location = "/home/ITER/jordand/java.log.*"
+        print(f'removing java logs at: {location}')
+        try:
+            proc = subprocess.run(
+                ["rm", "-r", location],
+                capture_output=True,
+                text=True,
+                timeout=10  # timeout in seconds
+            )
+            print(proc.stdout, end="")
+            if proc.stderr:
+                print("REMOVING JAVA LOGS ERR:", proc.stderr, file=sys.stderr, end="")
+        except subprocess.TimeoutExpired as e:
+            print(f"Command timed out after {e.timeout} seconds", file=sys.stderr)        
     
 if __name__ == '__main__':
     parser = ShineParser()

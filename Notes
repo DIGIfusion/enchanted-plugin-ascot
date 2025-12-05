@@ -1,0 +1,6 @@
+Plans for using GPR to fit noise
+
+The samples will be far apart as it is a heavy simulation. For this reason I will need to take repeated samples.
+
+I can use the var of the repeats as the noise for the GPR meaning the noise is now not a fitted parameter.
+I can then make a GPR model of the noise to get an estimate of the noise at different parts of the space. When doing this I should use the standard error on the var as the noise for the next model.  
