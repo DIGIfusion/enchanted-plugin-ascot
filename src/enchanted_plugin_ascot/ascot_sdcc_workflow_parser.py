@@ -110,6 +110,15 @@ class AscotSdccWorkflowParser(Parser):
         a5.data.create_input(
             "imas_b2ds", equilibrium_ids=equilibrium_ids, activate=True
         )
+        a5.input_init(bfield=True)
+        b2d = a5.data.bfield.active.read()
+        r, z, psi0 = a5.input_findpsi0(b2d["psi1"])
+        b2d["axisr"] = r
+        b2d["axisz"] = z
+        b2d["psi0"] = psi0 + 1e-5*unyt.Wb
+        a5.data.create_input("B_2DS", **b2d, activate=True)
+        a5.input_free()
+
         bfield = a5.data.bfield.active.read()
         core_profiles_ids = imasinterface.read_ids(
             "core_profiles", query=imas_ids_path, time_requested=time
@@ -161,7 +170,7 @@ class AscotSdccWorkflowParser(Parser):
 
         opt.update({
             # Simulation mode
-            "SIM_MODE":2, "ENABLE_ADAPTIVE":1,
+            "SIM_MODE":2, "ENABLE_ADAPTIVE":5,
             # End conds
             "ENDCOND_SIMTIMELIM":1, "ENDCOND_MAX_MILEAGE":1.5,
             "ENDCOND_CPUTIMELIM":1, "ENDCOND_MAX_CPUTIME":1000.0,
@@ -169,14 +178,15 @@ class AscotSdccWorkflowParser(Parser):
             # Physics
             "ENABLE_ORBIT_FOLLOWING":1, "ENABLE_COULOMB_COLLISIONS":1,
             # Distribution output
-            "ENABLE_DIST_5D":0,
+            "ENABLE_DIST_5D":1, "ENABLE_DIST_RHO5D":1,
+            "DIST_MIN_RHO":0.0, "DIST_MAX_RHO":1.0, "DIST_NBIN_RHO":100, "DIST_NBIN_THETA":1,
             "DIST_MIN_R":4.3,        "DIST_MAX_R":8.3,       "DIST_NBIN_R":50,
             "DIST_MIN_PHI":0,        "DIST_MAX_PHI":360,     "DIST_NBIN_PHI":1,
-            "DIST_MIN_Z":-2.0,       "DIST_MAX_Z":2.0,       "DIST_NBIN_Z":50,
-            "DIST_MIN_PPA":-1.3e-19, "DIST_MAX_PPA":1.3e-19, "DIST_NBIN_PPA":100,
-            "DIST_MIN_PPE":0,        "DIST_MAX_PPE":1.3e-19, "DIST_NBIN_PPE":50,
-            "DIST_MIN_TIME":0,       "DIST_MAX_TIME":1.0,    "DIST_NBIN_TIME":1,
-            "DIST_MIN_CHARGE":1,     "DIST_MAX_CHARGE":3,    "DIST_NBIN_CHARGE":1,
+            "DIST_MIN_Z":-4.0,       "DIST_MAX_Z":4.0,       "DIST_NBIN_Z":100,
+            "DIST_MIN_PPA":-0.25e-19, "DIST_MAX_PPA":0.25e-19, "DIST_NBIN_PPA":100,
+            "DIST_MIN_PPE":0,        "DIST_MAX_PPE":0.25e-19, "DIST_NBIN_PPE":50,
+            "DIST_MIN_TIME":0,       "DIST_MAX_TIME":2.0,    "DIST_NBIN_TIME":1,
+            "DIST_MIN_CHARGE":0,     "DIST_MAX_CHARGE":2,    "DIST_NBIN_CHARGE":1,
         })
         a5.data.create_input("opt", **opt, activate=True)
         a5.data.plasma.ASCOT.activate()
@@ -195,7 +205,8 @@ class AscotSdccWorkflowParser(Parser):
         a5 = Ascot(ascot_path_h5)
         try:
             print('debug a5:', type(a5), a5)
-            print('debug a5.data:', type(a5.data), a5.data)            
+            print('debug a5.data:', type(a5.data), a5.data)
+            print('debug a5.data.active:', type(a5.data.active), a5.data.active)                        
             weight, ekin = a5.data.active.getstate(
                 "weight", "ekin", state="end", endcond=["WALL", "NONE"]
             )
@@ -205,7 +216,9 @@ class AscotSdccWorkflowParser(Parser):
         except Exception as e:
             print(f"LOST POWER NOT RETRIVABLE, ERROR:\n{e} \n TRACEBACK:\n{traceback.format_exc()}")
             lost_power = np.nan
-        # print(f"Lost power is {lost_power} W.")
+
+        
+        print(f"Lost power is {lost_power} W.")
         # headers = ["Lost power [W]",]
         # rows = [(lost_power,),]
         # with open(path+"/slowingdown.csv", "w", newline="", encoding="utf-8") as f:
@@ -214,8 +227,37 @@ class AscotSdccWorkflowParser(Parser):
         #     writer.writerows(rows)
 
         # print("Done")
-        return lost_power
-        
+
+        # Toggle to write 1D quantities to file
+        a5 = Ascot(ascot_path_h5)
+        print('debug 2 a5:', type(a5), a5)
+        dist = a5.data.active.getdist("rho5d")
+        a5.input_init(bfield=True, plasma=True)
+        mom1d = a5.data.active.getdist_moments(
+            dist, "density", "currentdrive",
+            "ionpowerdep", "electronpowerdep",volmethod="prism",
+        )
+        a5.input_free()
+        density = np.sum(mom1d.ordinate("density") * mom1d.volume)
+        currentdrive = np.squeeze(mom1d.ordinate("currentdrive"))
+        currentdrive = np.sum(currentdrive[:,0].ravel() * mom1d.area.ravel())
+        ionpowerdep = np.nansum(mom1d.ordinate("ionpowerdep") * mom1d.volume)
+        electronpowerdep = np.nansum(mom1d.ordinate("electronpowerdep") * mom1d.volume)
+        num_of_particles = density.v
+
+
+            # headers = ["Lost power [W]", "Number of particles [1]",
+            #            "Current drive [A]",
+            #            "Power deposited to ions [W]", "Power deposited to electrons [W]"]
+            # rows = [(lost_power, density.v, currentdrive.v, ionpowerdep.v, electronpowerdep.v,),]
+            # with open(path+"/slowingdown.csv", "w", newline="", encoding="utf-8") as f:
+            #     writer = csv.writer(f)
+            #     writer.writerow(headers)
+            #     writer.writerows(rows)
+
+
+        return lost_power, num_of_particles, currentdrive.v, ionpowerdep.v, electronpowerdep.v
+
     def clean_output_files(self, run_dir: str):
         """
         Removes unnecessary files.
@@ -232,7 +274,12 @@ if __name__ == '__main__':
     # _, command = sys.argv
     parser = AscotSdccWorkflowParser()
     
-    ah5 = "/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_64sobol/3/130121/0/ascot_input.h5"
+    # ah5 = "/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_GRR_speedtest/3/130121/0/ascot_input.h5"
+    # ah5 = "/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_3_midpoint_nmrk10-000/3/130121/2/ascot_input.h5"
+    # ah5 = "/scratch/project_2013233/remote_results/imasdb/BBNBI_AI_testcase/3/130102/10/ascot_input.h5"
+    ah5 = '/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_64sobol_2nd/3/130121/1/ascot_input.h5'
+    # ah5 = '/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_GPR_random_testset10/3/130121/0/ascot_input.h5'
+    # ah5 = "/scratch/project_2013233/enchanted_runs/imasdb/BBNBI_AI_ascot_DT-D_PowerDepo_8_midpoint_nmrk1000_3rd/3/130121/6_test/ascot_input.h5"
     print('OUTPUT:',parser.read_output(ah5))
     # if command == 'clean':
     #     parser.clean()
